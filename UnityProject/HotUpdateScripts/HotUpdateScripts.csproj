@@ -28,6 +28,19 @@
     <WarningLevel>4</WarningLevel>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SignAssembly>true</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug-Windows|AnyCPU' ">
+    <Optimize>false</Optimize>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release-Windows|AnyCPU' ">
+    <Optimize>false</Optimize>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
@@ -58,10 +71,13 @@
     <Compile Include="JEngine\Examples\Data\HotData.cs" />
     <Compile Include="JEngine\Examples\Core\ProtobufDemo.cs" />
     <Compile Include="JEngine\UI\JUI.cs" />
-    <Compile Include="Proto2cs\dataClass.cs" />
     <Compile Include="JEngine\Examples\Core\AntiCheatDemo.cs" />
     <Compile Include="JEngine\Examples\Core\MultiInheritenceDemo.cs" />
     <Compile Include="JEngine\Examples\Core\ClassBindDemo.cs" />
+    <Compile Include="Proto2cs\JEngine_Examples_DataClass.cs" />
+    <Compile Include="JEngine\UI\JUIExtensions.cs" />
+    <Compile Include="JEngine\Core\JValidation.cs" />
+    <Compile Include="JEngine\Examples\Core\ValidationDemo.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine.UIModule">

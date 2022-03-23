@@ -1,14 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using ILRuntime.CLR.Utils;
+using ILRuntime.Mono.Cecil.Pdb;
+using ILRuntime.Reflection;
+using ILRuntime.Runtime.Intepreter;
 using JEngine.Core;
 using Malee.List;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using AppDomain = ILRuntime.Runtime.Enviorment.AppDomain;
 using Object = UnityEngine.Object;
 
 namespace JEngine.Editor
@@ -63,24 +69,57 @@ namespace JEngine.Editor
                     CleanFields(target as ClassBind);
                 }
             });
+            
+            GUILayout.Space(5);
+            
+            Setting.MakeHorizontal(50, () =>
+            {
+                EditorGUILayout.HelpBox(Setting.GetString(SettingString.ClassBindInfo), MessageType.Info);
+            });
 
 
             GUILayout.Space(15);
         }
 
-        private static Assembly HotAssembly
+        private static AppDomain Domain
         {
             get
             {
-                //每次都要读一遍dll，不能缓存，以确保用的是最新的
-                var dll = DLLMgr.FileToByte(DLLMgr.DllPath);
-                return Assembly.Load(dll);
+                AppDomain ad = new AppDomain();
+                ad.LoadAssembly(new MemoryStream(DLLMgr.FileToByte(DLLMgr.DllPath)),null, new PdbReaderProvider());
+                LoadILRuntime.InitializeILRuntime(ad);
+                return ad;
             }
         }
 
+        private static Type GetHotType(string typename)
+        {
+            AppDomain ad = Domain;
+            var t = ad.GetType(typename);
+            ad.Dispose();
+            return t.ReflectionType;
+        }
+        
+        private static ILTypeInstance GetHotInstance(string typename)
+        {
+            AppDomain ad = Domain;
+            var t = ad.GetType(typename);
+            ad.Dispose();
+            if (t == null) return null;
+            return ad.Instantiate(typename);
+        }
+        
+        private static bool HasHotType(string typename)
+        {
+            AppDomain ad = Domain;
+            bool ret = ad.LoadedTypes.ContainsKey(typename);
+            ad.Dispose();
+            return ret;
+        }
+        
         private static bool IsJBehaviourType(Type type)
         {
-            Type jType = HotAssembly.GetType("JEngine.Core.JBehaviour");
+            Type jType = GetHotType("JEngine.Core.JBehaviour");
             if (jType == null)
             {
                 return false;
@@ -88,13 +127,28 @@ namespace JEngine.Editor
             return type.IsSubclassOf(jType);
         }
         
+        private static bool IsJBehaviourType(string typename)
+        {
+            AppDomain ad = Domain;
+            var t = ad.GetType(typename);
+            var jb = ad.GetType("JEngine.Core.JBehaviour");
+            bool ret = t.CanAssignTo(jb);
+            ad.Dispose();
+            return ret;
+        }
+        
+        /// <summary>
+        /// 清理/排序/删除
+        /// </summary>
+        /// <param name="instance"></param>
+        /// <param name="toast"></param>
         public static async void CleanFields(ClassBind instance, bool toast = true)
         {
             int affectCounts = 0;
             foreach (var data in instance.scriptsToBind) //遍历
             {
                 string className = $"{data.classNamespace + (string.IsNullOrEmpty(data.classNamespace) ? "" : ".")}{data.className}";
-                Type t = HotAssembly.GetType(className); //加载热更类
+                Type t = GetHotType(className); //加载热更类
 
                 if (t == null)
                 {
@@ -118,6 +172,7 @@ namespace JEngine.Editor
                         Log.PrintError(String.Format(Setting.GetString(SettingString.ClassBindInvalidFieldDeleted),
                             className, field.fieldName));
                         data.fields.RemoveAt(i);
+                        i--;
                         continue;
                     }
 
@@ -149,13 +204,18 @@ namespace JEngine.Editor
                 Setting.GetString(SettingString.Done));
         }
 
+        /// <summary>
+        /// 修改类型
+        /// </summary>
+        /// <param name="instance"></param>
+        /// <param name="toast"></param>
         public static async void DoFieldType(ClassBind instance, bool toast = true)
         {
             int affectCounts = 0;
             foreach (var data in instance.scriptsToBind) //遍历
             {
                 string className = $"{data.classNamespace + (string.IsNullOrEmpty(data.classNamespace) ? "" : ".")}{data.className}";
-                Type t = HotAssembly.GetType(className); //加载热更类
+                Type t = GetHotType(className); //加载热更类
 
                 if (t == null)
                 {
@@ -179,7 +239,7 @@ namespace JEngine.Editor
                             className, field.fieldName));
                     }
 
-                    SetType(field, fieldType, HotAssembly);
+                    SetType(field, fieldType);
                     affectCounts++;
 
                     EditorUtility.DisplayProgressBar(Setting.GetString(SettingString.ClassBindProgress),
@@ -199,13 +259,19 @@ namespace JEngine.Editor
                 Setting.GetString(SettingString.Done));
         }
 
+        /// <summary>
+        /// 自动匹配
+        /// </summary>
+        /// <param name="instance"></param>
+        /// <param name="toast"></param>
         public static async void DoConvert(ClassBind instance, bool toast = true)
         {
             int affectCounts = 0;
             foreach (var data in instance.scriptsToBind) //遍历
             {
-                string className = $"{data.classNamespace + (string.IsNullOrEmpty(data.classNamespace) ? "" : ".")}{data.className}";
-                Type t = HotAssembly.GetType(className); //加载热更类
+                string className =
+                    $"{data.classNamespace + (string.IsNullOrEmpty(data.classNamespace) ? "" : ".")}{data.className}";
+                Type t = GetHotType(className); //加载热更类
 
                 if (t == null)
                 {
@@ -214,46 +280,32 @@ namespace JEngine.Editor
                             className), "OK");
                     return;
                 }
-
-                //热更实例
-                object hotInstance = null;
-                if (!t.IsSubclassOf(typeof(MonoBehaviour))) //JBehaviour/MonoBehaviour派生类不构造对象，不进行赋值
-                {
-                    Type tBase = t.BaseType;
-                    while (tBase != null)
-                    {
-                        if (tBase.BaseType != typeof(System.Object))
-                            tBase = tBase.BaseType;
-                        else
-                            break;
-                    }
-                    if (tBase?.FullName != "JEngine.Core.JBehaviour")
-                    {
-                        hotInstance = Activator.CreateInstance(t);
-                    }
-                }
-
-
+                
                 var fieldsInCb = data.fields.Select(f => f.fieldName).ToList(); //全部已经设置的字段
+                var flag = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic |
+                           BindingFlags.SetProperty;
+                var flag4Private = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.SetProperty ;
                 var members = new List<MemberInfo>(0);
+                //忽略有ClassBindIgnore标签的
+                var fs = t.GetFields(flag).ToList()
+                    .FindAll(x => !Attribute.IsDefined(x, typeof(ClassBindIgnoreAttribute), true));
+                var ps = t.GetProperties(flag).ToList()
+                    .FindAll(x => !Attribute.IsDefined(x, typeof(ClassBindIgnoreAttribute), true));
                 if (Setting.ClassBindIgnorePrivate)
                 {
-                    members.AddRange(t.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Instance |
-                                                 BindingFlags.Public));
-                    members.AddRange(t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance |
-                                                     BindingFlags.Public));
+                    members.AddRange(fs.FindAll(x => !x.IsPrivate));
+                    members.AddRange(t.GetProperties(flag4Private).ToList().FindAll(x =>
+                        !Attribute.IsDefined(x, typeof(ClassBindIgnoreAttribute), true)));
                 }
                 else
                 {
-                    members.AddRange(t.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Instance |
-                                                 BindingFlags.Public | BindingFlags.NonPublic));
-                    members.AddRange(t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance |
-                                                     BindingFlags.Public | BindingFlags.NonPublic));
+                    members.AddRange(fs);
+                    members.AddRange(ps);
                 }
 
                 foreach (var field in members)
                 {
-                    //跳过标签的
+                    //跳过HideInInspector标签的
                     if (Setting.ClassBindIgnoreHideInInspector)
                     {
                         var attr = field.GetCustomAttributes(typeof(HideInInspector), false);
@@ -268,7 +320,7 @@ namespace JEngine.Editor
                         String.Format(Setting.GetString(SettingString.ClassBindProgressContentForGetType),
                             $"{t.Name}:{field.Name}",
                             members.ToList().IndexOf(field), members.Count),
-                        members.ToList().IndexOf(field) / (float) members.Count);
+                        members.ToList().IndexOf(field) / (float)members.Count);
 
                     if (!fieldsInCb.Contains(field.Name))
                     {
@@ -277,11 +329,11 @@ namespace JEngine.Editor
                         cf.fieldName = fieldName;
 
                         Type fieldType = (field is PropertyInfo)
-                            ? ((PropertyInfo) field).PropertyType
-                            : ((FieldInfo) field).FieldType;
+                            ? ((PropertyInfo)field).PropertyType
+                            : ((FieldInfo)field).FieldType;
 
-                        SetType(cf, fieldType, HotAssembly);
-                        SetVal(ref cf, field, HotAssembly, hotInstance, instance.gameObject);
+                        SetType(cf, fieldType);
+                        SetVal(ref cf, field, instance.gameObject);
 
                         data.fields.Add(cf);
                         affectCounts++;
@@ -341,8 +393,12 @@ namespace JEngine.Editor
             }
         }
 
-        private static void SetType(ClassField cf, Type type, Assembly hotCode)
+        private static void SetType(ClassField cf, Type type)
         {
+            type =
+                type is ILRuntimeWrapperType wrapperType
+                    ? wrapperType.RealType
+                    : type;
             if (type == typeof(GameObject))
             {
                 cf.fieldType = ClassField.FieldType.GameObject;
@@ -384,7 +440,7 @@ namespace JEngine.Editor
                 {
                     cf.fieldType = ClassField.FieldType.Bool;
                 }
-                else if (hotCode.GetTypes().Contains(type))
+                else if (HasHotType(type.FullName))
                 {
                     cf.fieldType = ClassField.FieldType.UnityComponent;
                 }
@@ -395,40 +451,27 @@ namespace JEngine.Editor
             }
         }
 
-        private static void SetVal(ref ClassField cf, MemberInfo field, Assembly hotCode, object hotInstance,
+        private static void SetVal(ref ClassField cf, MemberInfo field, 
             GameObject instance)
         {
+            if (cf.fieldType == ClassField.FieldType.UnityComponent) return;
             object value;
             var type = (field is PropertyInfo)
                 ? ((PropertyInfo) field).PropertyType
                 : ((FieldInfo) field).FieldType;
-            if (hotInstance == null)
-            {
-                value = type.IsValueType ? Activator.CreateInstance(type) : null;
-            }
-            else
-            {
-                if (field is PropertyInfo)
-                {
-                    value = ((PropertyInfo) field).GetValue(hotInstance);
-                }
-                else
-                {
-                    value = ((FieldInfo) field).GetValue(hotInstance);
-                }
-            }
-
-            SetVal(ref cf, type, hotCode, value, instance);
+            value = type.IsValueType ? Activator.CreateInstance(type) : null;
+            SetVal(ref cf, type, value, instance);
         }
 
-        private static void SetVal(ref ClassField cf, Type type, Assembly hotCode, object value, GameObject instance)
+        private static void SetVal(ref ClassField cf, Type type, object value, GameObject instance)
         {
+            if (type is ILRuntimeType) return;
             if (type != typeof(Object) ||
                 !IsJBehaviourType(type))
             {
                 try
                 {
-                    if (type == typeof(String))
+                    if (type == typeof(String) || cf.fieldType == ClassField.FieldType.String)
                     {
                         value = "";
                     }

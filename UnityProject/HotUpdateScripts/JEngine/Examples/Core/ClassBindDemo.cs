@@ -65,7 +65,7 @@ namespace JEngine.Examples
 
         ClassBindDemo1 a1 = null;
 
-        [HideInInspector]public float floatField;
+        [HideInInspector] public float floatField;
 
         public void Awake()
         {
@@ -73,6 +73,41 @@ namespace JEngine.Examples
             Log.Print($"[ClassBindDemo2] txtFile value is: {txtFile.text}");
             Log.Print($"[ClassBindDemo2] a1 is null? {a1 is null}");
             Log.Print($"[ClassBindDemo2] floatField: {floatField}");
+        }
+
+        private void Start()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::Start");
+        }
+
+        private void FixedUpdate()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::FixedUpdate");
+        }
+
+        private void Update()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::Update");
+        }
+
+        private void LateUpdate()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::LateUpdate");
+        }
+
+        private void OnEnable()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::OnEnable");
+        }
+
+        private void OnDisable()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::OnDisable");
+        }
+
+        private void OnDestroy()
+        {
+            Log.Print("[ClassBindDemo2] ClassBindDemo2::OnDestroy");
         }
     }
 
@@ -92,5 +127,13 @@ namespace JEngine.Examples
         int a { get; set; }
         AInterface aIn { get; set; }
         void Awake();
+    }
+
+    public class ClassBindDemo
+    {
+        public void Awake()
+        {
+            Debug.Log("<color=red>[ClassBind] 这个周期ClassBind正在初始化，同时会调用ClassBind创建的实例的Awake方法（可选）</color>");
+        }
     }
 }

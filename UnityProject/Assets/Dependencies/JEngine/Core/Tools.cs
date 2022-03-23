@@ -115,6 +115,18 @@ namespace JEngine.Core
                 .SelectMany(g => g.GetComponentsInChildren<T>(true))
                 .ToList();
         }
+        
+        public static List<CrossBindingAdaptorType> GetAllMonoAdapters()
+        {
+            return UnityEngine.Object.FindObjectsOfType<MonoBehaviour>().ToList()
+                .FindAll(x => x.GetType().GetInterfaces().Contains(typeof(CrossBindingAdaptorType))).Select(x => (CrossBindingAdaptorType)x)
+                .ToList();
+        }
+
+        public static bool CanAssignTo(this object instance, Type type)
+        {
+            return ((ILTypeInstance)instance).Type.CanAssignTo(InitJEngine.Appdomain.GetType(type.FullName));
+        }
 
         public static object GetHotComponent(GameObject gameObject, string typeName)
         {

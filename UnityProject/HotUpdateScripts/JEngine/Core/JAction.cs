@@ -38,7 +38,6 @@ namespace JEngine.Core
         {
             Reset();
             JActions.Add(this);
-            Loom.Initialize();
         }
 
         private int _index;
@@ -338,7 +337,7 @@ namespace JEngine.Core
                     }
                     else
                     {
-                        Loom.QueueOnOtherThread(action, null);
+                        action(null);
                     }
                 }, _cancellationTokenSource.Token);
             }

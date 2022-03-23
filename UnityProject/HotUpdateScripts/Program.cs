@@ -31,11 +31,17 @@ using UnityEngine;
 
 namespace HotUpdateScripts
 {
-    public class Program
+    public static class Program
     {
-        public void RunGame()
+        public static void SetupGame()
         {
+            Debug.Log("<color=cyan>[SetupGame] 这个周期在ClassBind初始化之前，可以对游戏数据进行一些初始化</color>");
+        }
 
+        public static void RunGame()
+        {
+            Debug.Log("<color=yellow>[RunGame] 这个周期在ClassBind初始化后，可以激活游戏相关逻辑</color>");
+            //如果生成热更解决方案跳过，参考https://xgamedev.uoyou.com/guide-v0-6.html#hash-516317491的方法一，把生成的平台改成Any CPU（默认是小写的，windows下无法生成）
         }
     }
 }
